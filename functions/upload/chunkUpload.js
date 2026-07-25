@@ -6,6 +6,13 @@ import { S3Client, CreateMultipartUploadCommand, UploadPartCommand, AbortMultipa
 import { getDatabase, checkDatabaseConfig } from '../utils/databaseAdapter.js';
 import { fetchPageConfig } from '../utils/sysConfig.js';
 
+const DEFAULT_FILE_TYPE = 'application/octet-stream';
+
+// Author: XX. Browsers leave MIME empty for many valid binary files, so chunk sessions use a safe generic type instead of rejecting them.
+function normalizeFileType(value) {
+    return typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_FILE_TYPE;
+}
+
 // 初始化分块上传
 export async function initializeChunkedUpload(context) {
     const { request, env, url } = context;
@@ -16,10 +23,10 @@ export async function initializeChunkedUpload(context) {
         const formdata = await request.formData();
 
         const originalFileName = formdata.get('originalFileName');
-        const originalFileType = formdata.get('originalFileType');
+        const originalFileType = normalizeFileType(formdata.get('originalFileType'));
         const totalChunks = parseInt(formdata.get('totalChunks'));
 
-        if (!originalFileName || !originalFileType || !totalChunks) {
+        if (!originalFileName || !totalChunks) {
             return createResponse('Error: Missing initialization parameters', { status: 400 });
         }
 
@@ -97,9 +104,9 @@ export async function handleChunkUpload(context) {
         const totalChunks = parseInt(formdata.get('totalChunks'));
         const uploadId = formdata.get('uploadId');
         const originalFileName = formdata.get('originalFileName');
-        const originalFileType = formdata.get('originalFileType');
+        let originalFileType = normalizeFileType(formdata.get('originalFileType'));
 
-        if (!chunk || chunkIndex === null || !totalChunks || !uploadId || !originalFileName || !originalFileType) {
+        if (!chunk || chunkIndex === null || !totalChunks || !uploadId || !originalFileName) {
             return createResponse('Error: Missing chunk upload parameters', { status: 400 });
         }
 
@@ -111,6 +118,7 @@ export async function handleChunkUpload(context) {
         }
 
         const sessionInfo = JSON.parse(sessionData);
+        originalFileType = normalizeFileType(formdata.get('originalFileType') || sessionInfo.originalFileType);
 
         // 验证会话信息
         if (sessionInfo.originalFileName !== originalFileName ||
